@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 """
-Slick Minimal template v2 — with Zilla Slab / Source Sans 3 proxies,
+Slick Minimal template v2 - with Zilla Slab / Source Sans 3 proxies,
 increased text sizes, adaptive layouts, bold lead-ins, rounded cards.
 """
 
@@ -37,7 +38,7 @@ ACC_W = Inches(0.25)
 CW = Inches(8.6)
 
 
-# ── helpers ──
+# -- helpers --
 
 def _add_rect(slide, x, y, w, h, fill_color):
     shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, x, y, w, h)
@@ -126,7 +127,7 @@ def _add_split_text(slide, x, y, w, h, text, font_name, font_size, color, line_s
     return tb
 
 def _adaptive_layout(n, content_top, slide_h, bottom_margin=Inches(0.35)):
-    """Calculate card positions — fills available space, biased slightly up."""
+    """Calculate card positions - fills available space, biased slightly up."""
     avail = slide_h - content_top - bottom_margin
     gap = Inches(0.12)
     rowH = int((avail - (n - 1) * gap) / n)
@@ -140,7 +141,7 @@ def _adaptive_layout(n, content_top, slide_h, bottom_margin=Inches(0.35)):
     return startY, rowH, gap, fs, ls
 
 
-# ── slide builders ──
+# -- slide builders --
 
 def build_title(prs, c):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
@@ -461,20 +462,20 @@ def build_wsn_reveal(prs, c):
                           Emu(w - Inches(0.5)), Inches(2.2),
                           data["detail"], BODY_FONT, fs_detail, MID, line_spacing=16)
 
-    # Slide 1: What only — single wide card
+    # Slide 1: What only - single wide card
     s1 = prs.slides.add_slide(prs.slide_layouts[6])
     _accent(s1); _slide_title(s1, c.get("title", "Key Finding"), size=24)
     _draw_step_bar(s1, 1)
     _draw_zone(s1, LM, Inches(5.5), GREEN, c.get("what", {}), emphasis=True)
 
-    # Slide 2: What + So What — two cards side by side
+    # Slide 2: What + So What - two cards side by side
     s2 = prs.slides.add_slide(prs.slide_layouts[6])
     _accent(s2); _slide_title(s2, c.get("title", "Key Finding"), size=24)
     _draw_step_bar(s2, 2)
     _draw_zone(s2, LM, Inches(4.05), GREEN, c.get("what", {}))
     _draw_zone(s2, Inches(5.2), Inches(4.3), BLUE, c.get("soWhat", {}), emphasis=True)
 
-    # Slide 3: All three — condensed top two + full-width Now What
+    # Slide 3: All three - condensed top two + full-width Now What
     s3 = prs.slides.add_slide(prs.slide_layouts[6])
     _accent(s3); _slide_title(s3, c.get("title", "Key Finding"), size=24)
     _draw_step_bar(s3, 3)
@@ -498,7 +499,7 @@ def build_wsn_reveal(prs, c):
                   Inches(3.8), Inches(0.9),
                   c.get("soWhat", {}).get("detail", ""), BODY_FONT, 10, MID)
 
-    # Now What — full width, emphasized
+    # Now What - full width, emphasized
     nwY = Emu(cond_y + cond_h + Inches(0.15)); nwH = Inches(1.65)
     _add_rounded_rect(s3, LM, nwY, CW, nwH, OFF_WHITE)
     _add_rect(s3, LM, nwY, Inches(0.10), nwH, PURPLE)
