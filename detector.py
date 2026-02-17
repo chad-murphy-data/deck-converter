@@ -92,16 +92,24 @@ def extract_slides(pptx_path):
                         # Also check paragraph-level font (some decks set it there)
                         if hasattr(para, 'font') and para.font.size and para.font.size.pt > max_font:
                             max_font = para.font.size.pt
+                    # Get placeholder index (0=title, 1=body in most layouts)
+                    ph_idx = None
+                    if shape.placeholder_format:
+                        ph_idx = shape.placeholder_format.idx
                     # Fallback: estimate from shape height and text count
+                    # Cap estimate to prevent tall body boxes outranking short title boxes
                     if max_font == 0 and shape.height and len(paragraphs) > 0:
                         est = round(shape.height.pt / max(len(paragraphs) * 1.5, 1))
                         if est > 6:
-                            max_font = est
+                            max_font = min(est, 40)
+                    # Title placeholder with inherited fonts should always win over body
+                    if ph_idx == 0:
+                        max_font = max(max_font, 36)
                     sd["text_boxes"].append({
                         "type": "text", "paragraphs": paragraphs,
                         "text": "\n".join(paragraphs), "para_count": len(paragraphs),
                         "max_font_size": max_font, "left": shape.left, "top": shape.top,
-                        "width": shape.width,
+                        "width": shape.width, "placeholder_idx": ph_idx,
                     })
                     sd["all_text"].extend(paragraphs)
         sd["total_text"] = "\n".join(sd["all_text"])
@@ -136,7 +144,11 @@ def _score_all_types(slide):
         s += 0.2; r.append(f"{max_font}pt font")
     if total_words < 15 and max_font >= 36:
         s += 0.15
-    scores.append(("title", min(s, 0.95), "; ".join(r) or "no strong signals"))
+    # Penalize if body placeholders have many items (not a title slide)
+    body_phs_t = [b for b in boxes if b.get("placeholder_idx") == 1]
+    if body_phs_t and sum(b["para_count"] for b in body_phs_t) >= 3:
+        s -= 0.25; r.append("body has multiple items")
+    scores.append(("title", max(min(s, 0.95), 0), "; ".join(r) or "no strong signals"))
 
     # ── CLOSER ──
     s, r = 0.0, []
@@ -153,7 +165,11 @@ def _score_all_types(slide):
     if max_font >= 24: s += 0.25; r.append(f"{max_font}pt font")
     if max_font >= 32: s += 0.15
     if slide["number"] > 1: s += 0.05
-    scores.append(("section_divider", min(s, 0.95), "; ".join(r) or "no strong signals"))
+    # Penalize if there are body placeholders with multiple bullets (not a divider)
+    body_phs = [b for b in boxes if b.get("placeholder_idx") == 1]
+    if body_phs and sum(b["para_count"] for b in body_phs) >= 3:
+        s -= 0.3; r.append("multiple body paragraphs")
+    scores.append(("section_divider", max(min(s, 0.95), 0), "; ".join(r) or "no strong signals"))
 
     # ── AGENDA ──
     s, r = 0.0, []
@@ -169,7 +185,22 @@ def _score_all_types(slide):
     if len(bullet_like) >= 3: s += 0.45; r.append(f"{len(bullet_like)} bullet-length items")
     if len(bullet_like) >= 5: s += 0.1
     if total_words > 40: s += 0.1; r.append("substantial text")
-    scores.append(("in_brief", min(s, 0.95), "; ".join(r) or "few bullet-length items"))
+    # Detect title placeholder + body placeholder with multiple paragraphs
+    has_title_ph = any(b.get("placeholder_idx") == 0 for b in boxes)
+    body_phs = [b for b in boxes if b.get("placeholder_idx") == 1]
+    if has_title_ph and body_phs:
+        body_paras = sum(b["para_count"] for b in body_phs)
+        if body_paras >= 2:
+            s += 0.45; r.append(f"title+body placeholder with {body_paras} bullets")
+        # Extra boost for classic single-body-box layout
+        if len(body_phs) == 1 and body_paras >= 2:
+            s += 0.1; r.append("single body box")
+    # Penalize if body boxes are spatially separated (more likely comparison)
+    if len(body_phs) >= 2:
+        lefts = sorted(b.get("left", 0) or 0 for b in body_phs)
+        if (lefts[-1] - lefts[0]) > Emu(3000000):
+            s -= 0.3; r.append("body boxes side-by-side (comparison?)")
+    scores.append(("in_brief", max(min(s, 0.95), 0), "; ".join(r) or "few bullet-length items"))
 
     # ── STAT CALLOUT ──
     s, r = 0.0, []
@@ -226,10 +257,12 @@ def _score_all_types(slide):
     comp_kw = ["before", "after", "traditional", "current", "new", "old"]
     cm = [k for k in comp_kw if k in full]
     if len(cm) >= 2: s += 0.2; r.append(f"words: {', '.join(cm)}")
-    if box_count >= 2:
-        lefts = sorted(set(b["left"] for b in boxes if b["left"] is not None))
+    # Check for two body boxes side by side (exclude title placeholder)
+    body_boxes = [b for b in boxes if b.get("placeholder_idx") != 0]
+    if len(body_boxes) >= 2:
+        lefts = sorted(set(b["left"] for b in body_boxes if b["left"] is not None))
         if len(lefts) >= 2 and (lefts[-1] - lefts[0]) > Emu(3000000):
-            s += 0.2; r.append("two-column layout")
+            s += 0.45; r.append("two-column body layout")
     scores.append(("comparison", min(s, 0.95), "; ".join(r) or "no comparison signals"))
 
     # ── METHODS ──
