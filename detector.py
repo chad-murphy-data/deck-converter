@@ -94,7 +94,7 @@ def extract_slides(pptx_path):
                             max_font = para.font.size.pt
                     # Get placeholder index (0=title, 1=body in most layouts)
                     ph_idx = None
-                    if shape.placeholder_format:
+                    if shape.is_placeholder:
                         ph_idx = shape.placeholder_format.idx
                     # Fallback: estimate from shape height and text count
                     # Cap estimate to prevent tall body boxes outranking short title boxes
