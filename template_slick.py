@@ -30,8 +30,8 @@ OFF_WHITE = RGBColor(0xF9, 0xF7, 0xF5)
 WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 COLORS = [GREEN, BLUE, PURPLE, COBALT, GOLD]
 
-TITLE_FONT = "Zilla Slab"
-BODY_FONT = "Source Sans 3"
+TITLE_FONT = "Fidelity Slab"
+BODY_FONT = "Fidelity Sans"
 
 LM = Inches(0.9)
 ACC_W = Inches(0.25)
