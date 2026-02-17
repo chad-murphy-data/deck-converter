@@ -1,28 +1,55 @@
 """
 Content mapper: transforms raw extracted slide data into
 the structured dicts that template builders expect.
+
+FIXED: Title detection now properly tracks which text was chosen as the title,
+so body text extraction excludes the correct item instead of blindly skipping
+the first positional text (which may not be the title).
 """
 
 import re
 
 
 def _first_title(slide):
-    """Get the most likely title from a slide's text boxes."""
+    """Get the most likely title from a slide's text boxes.
+    
+    Returns (title_text, title_source) where title_source is the exact
+    string that was chosen, so _body_texts can exclude it.
+    """
     boxes = slide.get("raw_boxes", [])
-    # Prefer the box with largest font
+    texts = slide.get("all_text", [])
+    
+    # Prefer the box with largest font (likely the actual heading)
     titled = sorted(boxes, key=lambda b: b.get("max_font_size", 0), reverse=True)
     if titled and titled[0]["max_font_size"] > 16:
-        return titled[0]["paragraphs"][0]
+        title_text = titled[0]["paragraphs"][0]
+        return title_text, title_text
+    
     # Fallback: first text item
-    texts = slide.get("all_text", [])
-    return texts[0] if texts else "Untitled"
+    if texts:
+        return texts[0], texts[0]
+    return "Untitled", None
 
 
-def _body_texts(slide, skip_first=True):
-    """Get body text items (skip the title-like first item)."""
-    texts = slide.get("all_text", [])
-    if skip_first and len(texts) > 1:
-        return texts[1:]
+def _body_texts(slide, exclude_title=None):
+    """Get body text items, excluding the identified title text.
+    
+    Instead of blindly skipping the first item (which caused the bug where
+    actual titles were dropped and bullets were promoted), this now finds
+    and removes the specific text that was chosen as the title.
+    """
+    texts = list(slide.get("all_text", []))
+    
+    if exclude_title is not None:
+        # Remove the first occurrence of the title text
+        try:
+            texts.remove(exclude_title)
+        except ValueError:
+            # Title text wasn't found in all_text (shouldn't happen, but be safe)
+            # Fall back to skipping first item
+            if len(texts) > 1:
+                texts = texts[1:]
+    
     return texts
 
 
@@ -66,7 +93,7 @@ def _find_big_number(slide):
     return "—"
 
 
-def _extract_quote(slide):
+def _extract_quote(slide, exclude_title=None):
     """Extract quote text and attribution."""
     texts = slide.get("all_text", [])
     quote = ""
@@ -85,18 +112,18 @@ def _extract_quote(slide):
 
     if not quote:
         # Just use the longest text as the quote
-        body = _body_texts(slide)
+        body = _body_texts(slide, exclude_title=exclude_title)
         if body:
             quote = max(body, key=len)
 
     return quote, attribution, context
 
 
-def _split_columns(slide):
+def _split_columns(slide, exclude_title=None):
     """Try to detect left/right column content based on text box positions."""
     boxes = slide.get("raw_boxes", [])
     if len(boxes) < 2:
-        texts = _body_texts(slide)
+        texts = _body_texts(slide, exclude_title=exclude_title)
         mid = len(texts) // 2
         return texts[:mid] or [""], texts[mid:] or [""]
 
@@ -109,6 +136,9 @@ def _split_columns(slide):
     for b in sorted_boxes:
         x = b.get("left", 0) or 0
         for p in b["paragraphs"]:
+            # Skip the title text in column splitting too
+            if exclude_title is not None and p == exclude_title:
+                continue
             if x < mid_x:
                 left.append(p)
             else:
@@ -119,8 +149,8 @@ def _split_columns(slide):
 
 def map_slide(slide, slide_type):
     """Map extracted slide data to the template-ready dict for a given type."""
-    title = _first_title(slide)
-    body = _body_texts(slide)
+    title, title_source = _first_title(slide)
+    body = _body_texts(slide, exclude_title=title_source)
     texts = slide.get("all_text", [])
 
     if slide_type == "title":
@@ -180,7 +210,7 @@ def map_slide(slide, slide_type):
         }
 
     elif slide_type == "quote":
-        quote, attribution, context = _extract_quote(slide)
+        quote, attribution, context = _extract_quote(slide, exclude_title=title_source)
         return {
             "title": title,
             "quote": quote,
@@ -189,7 +219,7 @@ def map_slide(slide, slide_type):
         }
 
     elif slide_type == "comparison":
-        left_items, right_items = _split_columns(slide)
+        left_items, right_items = _split_columns(slide, exclude_title=title_source)
         return {
             "title": title,
             "leftLabel": left_items[0] if left_items else "Option A",
